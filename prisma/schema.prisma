@@ -1,0 +1,331 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum PaymentMethod {
+  COD
+  WALLET
+  INSTAPAY
+}
+
+enum PaymentStatus {
+  PENDING
+  PROOF_SUBMITTED
+  AWAITING_COLLECTION
+  CONFIRMED
+  FAILED
+  REFUNDED
+}
+
+enum ShippingStatus {
+  NOT_SHIPPED
+  SHIPPED
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+  RETURNED
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  email        String?   @unique
+  name         String
+  passwordHash String
+  role         Role      @default(USER)
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  sessions     Session[]
+  orders       Order[]
+  reviews      Review[]
+  paymentProofUploads PaymentProof[] @relation("PaymentProofUploader")
+  verifiedPaymentProofs PaymentProof[] @relation("PaymentProofVerifier")
+  orderEvents OrderEvent[] @relation("OrderEventActor")
+  notifications Notification[]
+  pushSubscriptions PushSubscription[]
+  @@index([role, active])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model Collection {
+  nameAr      String?
+  descriptionAr String?
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String?
+  imageUrl    String?
+  sortOrder   Int       @default(0)
+  active      Boolean   @default(true)
+  products    Product[]
+}
+
+model Product {
+  nameAr      String?
+  descriptionAr String?
+  notesAr     String?
+  topNotesAr  String?
+  heartNotesAr String?
+  baseNotesAr String?
+  id           String      @id @default(cuid())
+  name         String
+  slug         String      @unique
+  description  String
+  notes        String
+  imageUrl     String
+  galleryImages String    @default("[]") // Optional merchant-supplied authentic secondary photos (JSON URLs)
+  customNotes String      @default("[]") // Additional admin-defined fragrance-note sections (JSON)
+  price        Int
+  size         String
+  stock        Int         @default(0)
+  active       Boolean     @default(true)
+  collectionId String
+  collection   Collection  @relation(fields: [collectionId], references: [id])
+  orderItems   OrderItem[]
+  reviews      Review[]
+  topNotes     String       @default("")
+  heartNotes   String       @default("")
+  baseNotes    String       @default("")
+  concentration String      @default("Eau de Parfum")
+}
+
+model StoreSettings {
+  shippingPolicyAr String @default("")
+  returnsPolicyAr String @default("")
+  privacyPolicyAr String @default("")
+  heroTaglineAr String @default("")
+  heroDescriptionAr String @default("")
+  storyHeadlineAr String @default("")
+  storyDescriptionAr String @default("")
+  id                    String  @id @default("main")
+  brandName             String  @default("NOIRÉ")
+  whatsappNumber        String  @default("")
+  walletNumber          String  @default("")
+  instapayAddress       String  @default("")
+  shippingFee           Int     @default(75)
+  freeShippingThreshold Int     @default(3000)
+  heroImageUrl          String  @default("https://images.unsplash.com/photo-1594035910387-fea47794261f?auto=format&fit=crop&w=1800&q=85")
+  storyImageUrl         String  @default("https://images.unsplash.com/photo-1541643600914-78b084683601?auto=format&fit=crop&w=1200&q=85")
+  heroPositionX Int @default(50)
+  heroPositionY Int @default(50)
+  storyPositionX Int @default(50)
+  storyPositionY Int @default(50)
+  instagramUrl          String  @default("https://www.instagram.com/")
+  facebookUrl           String  @default("")
+  tiktokUrl             String  @default("")
+  heroTagline           String  @default("The Art of Quiet Luxury.")
+  heroDescription       String  @default("Timeless fragrances crafted with intention, designed to be felt, never announced.")
+  storyHeadline         String  @default("More than a fragrance. A feeling.")
+  storyDescription      String  @default("We believe fragrance is the most personal form of expression. A beautiful scent creates memories that remain long after the moment has passed.")
+  shippingPolicy        String  @default("Delivery fees and coverage are shown at checkout. Actual delivery times depend on the selected courier and your location. Contact us for delivery questions.")
+  returnsPolicy         String  @default("Please contact NOIRÉ before requesting an exchange or return. Eligibility, condition requirements and timeframes must comply with applicable consumer law and our published terms.")
+  privacyPolicy         String  @default("We use your account, contact and delivery information to process orders and provide support. Contact NOIRÉ for questions about your personal information.")
+}
+
+model Order {
+  id            String        @id @default(cuid())
+  reference     String        @unique
+  createdAt     DateTime      @default(now())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  customerName  String
+  phone         String
+  governorate   String
+  address       String
+  notes         String?
+  area          String        @default("")
+  paymentReference String?
+  courierName   String?
+  trackingNumber String?
+  couponId      String?
+  coupon        Coupon?       @relation(fields: [couponId], references: [id])
+  discount      Int          @default(0)
+  paymentMethod PaymentMethod
+  paymentStatus PaymentStatus @default(PENDING)
+  status        OrderStatus   @default(PENDING)
+  subtotal      Int
+  shipping      Int
+  total         Int
+  items         OrderItem[]
+  shippingStatus ShippingStatus @default(NOT_SHIPPED)
+  courierId String?
+  courier ShippingCarrier? @relation(fields: [courierId], references: [id], onDelete: SetNull)
+  paymentProof PaymentProof?
+  events OrderEvent[]
+  notifications Notification[]
+  @@index([userId, createdAt])
+  @@index([paymentStatus, status])
+  @@index([shippingStatus, createdAt])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  unitPrice Int
+  order     Order   @relation(fields: [orderId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
+  @@index([productId])
+}
+
+model PaymentProof {
+  id String @id @default(cuid())
+  token String @unique
+  userId String
+  user User @relation("PaymentProofUploader", fields: [userId], references: [id], onDelete: Cascade)
+  orderId String? @unique
+  order Order? @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fileName String
+  mimeType String
+  fileSize Int
+  storagePath String
+  uploadedAt DateTime @default(now())
+  expiresAt DateTime?
+  verifiedAt DateTime?
+  verifiedById String?
+  verifiedBy User? @relation("PaymentProofVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  verificationNote String?
+  @@index([userId, expiresAt])
+}
+
+model ShippingCarrier {
+  id String @id @default(cuid())
+  name String @unique
+  contactPhone String @default("")
+  website String @default("")
+  trackingUrl String @default("")
+  notes String @default("")
+  active Boolean @default(true)
+  requiresTracking Boolean @default(true)
+  coverageZoneCodes String @default("[]") // selected Egyptian governorate codes, JSON array
+  createdAt DateTime @default(now())
+  orders Order[]
+}
+
+model OrderEvent {
+  id String @id @default(cuid())
+  orderId String
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actorUserId String?
+  actorUser User? @relation("OrderEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorLabel String @default("System")
+  eventType String
+  fromValue String?
+  toValue String?
+  note String @default("")
+  createdAt DateTime @default(now())
+  @@index([orderId, createdAt])
+}
+
+model Notification {
+  id String @id @default(cuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId String?
+  order Order? @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  title String
+  message String
+  kind String @default("ORDER")
+  readAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId, readAt, createdAt])
+}
+
+model ShippingZone {
+  id           String  @id @default(cuid())
+  code         String  @unique
+  name         String
+  fee          Int     @default(75)
+  active       Boolean @default(true)
+  codAvailable Boolean @default(true)
+  etaDays      Int     @default(4)
+}
+
+model Coupon {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  type        DiscountType
+  value       Int
+  minSubtotal Int          @default(0)
+  maxUses     Int?
+  usedCount   Int          @default(0)
+  expiresAt   DateTime?
+  startsAt    DateTime?
+  maxDiscount Int?
+  perCustomerLimit Int?
+  eligibleCollectionId String?
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  orders      Order[]
+  @@index([active, expiresAt])
+}
+
+model Review {
+  id        String       @id @default(cuid())
+  productId String
+  userId    String
+  rating    Int
+  title     String       @default("")
+  body      String
+  status    ReviewStatus @default(PENDING)
+  adminReply String @default("")
+  repliedAt DateTime?
+  moderationNote String @default("")
+  createdAt DateTime     @default(now())
+  product   Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([productId, userId])
+  @@index([productId, status])
+}
+
+model PushSubscription {
+ id String @id @default(cuid())
+ userId String
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ endpoint String @unique
+ p256dh String
+ auth String
+ kinds String @default("[\"NEW_ORDER\",\"PAYMENT_UPDATE\",\"SHIPPING\",\"INVENTORY\",\"REVIEW\"]")
+ active Boolean @default(true)
+ createdAt DateTime @default(now())
+ @@index([userId,active])
+}

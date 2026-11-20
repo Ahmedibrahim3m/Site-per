@@ -1,0 +1,14 @@
+"use client";
+import { useEffect, useState } from "react";
+import { ArrowLeft, Package, ShoppingBag } from "lucide-react";
+import { apiJson } from "@/lib/client-api";
+import SmartHeader from "@/components/smart-header";
+import NotificationsPanel from "@/components/notifications-panel";
+import {useLanguage} from "@/components/language-provider";
+type Order={id:string;reference:string;createdAt:string;status:string;paymentStatus:string;paymentMethod:string;shippingStatus:string;total:number;items:{id:string;quantity:number;unitPrice:number;product:{name:string;imageUrl:string;size:string}}[]};
+export default function MyOrders({name}:{name:string}){
+ const {t,money:localMoney,locale}=useLanguage();
+ const [orders,setOrders]=useState<Order[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState("");
+ useEffect(()=>{apiJson<{orders:Order[]}>("/api/my-orders").then(x=>setOrders(x.orders)).catch(e=>setError(String(e.message))).finally(()=>setLoading(false));},[]);
+ return <main className="account-page"><SmartHeader backHref="/" backLabel="Continue shopping"/><div className="account-wrap"><p className="eyebrow">{t("YOUR NOIRÉ ACCOUNT")}</p><h1>{locale==="ar"?"طلباتي":<>My <em>orders.</em></>}</h1><p className="muted">{locale==="ar"?`أهلًا ${name}، يمكنك متابعة طلباتك وحالة الدفع هنا.`:`Welcome, ${name}. Track your purchases and payment status here.`}</p><div className="my-orders-notifications"><NotificationsPanel/></div>{loading&&<p className="status">{t("Loading orders…")}</p>}{error&&<p className="status error" role="alert">{error}</p>}{!loading&&!error&&!orders.length&&<div className="empty-orders"><ShoppingBag size={34}/><h2>{t("No orders yet.")}</h2><p>{t("There is a fragrance waiting to become yours.")}</p><a className="btn btn-dark" href="/#shop">{t("EXPLORE FRAGRANCES")}</a></div>}{orders.map(o=><article className="order-card" key={o.id}><header><div><strong>{o.reference}</strong><span>{new Date(o.createdAt).toLocaleDateString(locale==="ar"?"ar-EG":"en-EG")}</span></div><div className="order-badges"><span>{o.status}</span><span>{t("PAYMENT:")} {o.paymentStatus.replaceAll("_"," ")}</span><span>{t("SHIPPING:")} {o.shippingStatus.replaceAll("_"," ")}</span></div></header><div className="order-products">{o.items.map(line=><div className="order-line" key={line.id}><img src={line.product.imageUrl} alt=""/><div><strong>{line.product.name}</strong><p>{line.product.size} · {t("Qty")} {line.quantity}</p></div><span>{localMoney(line.unitPrice*line.quantity)}</span></div>)}</div><footer className="order-footer"><Package size={17}/> {t(o.paymentMethod==="COD"?"Cash on delivery":o.paymentMethod==="WALLET"?"Electronic wallet transfer":"InstaPay transfer")}<strong>{localMoney(o.total)}</strong><a className="order-track-link" href={`/order/${o.reference}`}>{t("VIEW TRACKING")} →</a></footer></article>)}</div></main>;
+}
